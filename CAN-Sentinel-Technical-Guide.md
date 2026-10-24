@@ -1,197 +1,180 @@
 # CAN-Sentinel
-## Technical Guide: How the Automotive ECU Intrusion Detection Demo Works
+## Technical Guide: How the Automotive ECU Intrusion-Detection Demo Works
 
-**Project:** CAN-Sentinel: Automotive ECU Intrusion Detection System  
 **Audience:** Security Admin Associate L1 / Cyber Security internship  
 **Scope:** Offline CAN 2.0B analysis and synthetic attack simulation  
 
----
+> **Safety statement:** This educational prototype does not open a CAN adapter, communicate with a vehicle, or transmit frames. It is not production-ready, safety-certified, or hard-real-time software. Synthetic metrics must not be represented as vehicle performance.
 
-## 1. Executive overview
+## 1. At a glance
 
-CAN-Sentinel is a Python demonstration of a small intrusion-detection pipeline for Controller Area Network (CAN) traffic. It generates repeatable examples of benign traffic and three attack patterns, validates and parses packet records, computes causal per-frame features, evaluates deterministic checks and statistical classifiers, records alerts as JSON Lines, and presents analysis in a Streamlit dashboard.
-
-The implementation is intentionally simulation-first. It does not open a CAN adapter, interact with a vehicle, or transmit frames. Its model and thresholds are demonstrators, not validated protection for any particular ECU, vehicle, or safety function. In particular, synthetic benchmark results cannot establish production detection capability.
-
-At a high level:
+CAN-Sentinel demonstrates an offline intrusion-detection workflow. It generates benign and attack-like records or parses a CSV capture, validates the fields, derives causal per-frame features, applies deterministic rules and a machine-learning risk score, records alerts, and displays results in Streamlit.
 
 ```text
-Synthetic scenario or authorized CSV log
-        ↓
-Validation and normalization
-        ↓
-Causal feature extraction (per frame)
-        ↓
-Deterministic rules ───────────── ML ensemble
-        └───────────────┬───────────────┘
-                        ↓
-             JSONL forensic alert log
-                  ↙             ↘
-        Streamlit dashboard    Evaluator
+Synthetic scenario / authorized CSV
+             ↓
+Validation and chronological normalization
+             ↓
+Causal features (current + past frames only)
+        ↙                         ↘
+Deterministic rules          ML risk scoring
+        ↘                         ↙
+           Fused per-frame alert decision
+             ↓                 ↓
+       JSONL forensic log   Evaluator / dashboard
 ```
 
-## 2. CAN and the security problem
+## 2. Automotive CAN security background
 
-CAN is a message-oriented bus used by in-vehicle electronic control units. A frame carries an arbitration identifier, a data-length code (DLC), and a payload. Classical CAN supports payloads up to eight bytes. Arbitration gives lower numeric identifiers higher priority when simultaneous senders contend for the bus.
+CAN is a message-oriented in-vehicle network used by electronic control units (ECUs). A Classical CAN frame carries an arbitration identifier, a data-length code (DLC), and up to eight data bytes. Lower numeric identifiers win arbitration when senders contend for the bus, so high-priority traffic can delay lower-priority frames.
 
-The identifier is not a cryptographic sender identity. On a conventional CAN segment, a node able to transmit may be able to send a frame using another ECU's identifier. High-priority traffic can also consume bus capacity and delay lower-priority messages. Therefore, IDS monitoring commonly considers message identity and expected timing, payload patterns, and rate anomalies.
+A CAN identifier is not a cryptographic proof of sender identity. Depending on network access, a compromised node may send frames using another ECU's identifier. Monitoring can therefore look for unexpected IDs, rates, timing, or payload patterns. CAN-Sentinel illustrates such checks only. It has no OEM signal database, cryptographic sender authentication, vehicle gateway, safety response, or validated vehicle baseline.
 
-CAN-Sentinel's sample rules and synthetic attack signals illustrate those concepts. They do not implement authentication, bus arbitration timing analysis at the electrical layer, an OEM signal database, or safe automated response.
-
-## 3. Repository structure
+## 3. Repository map
 
 ```text
 CAN-Sentinel/
-├── app.py                         Streamlit dashboard
-├── generate_report.py             Markdown and optional PDF report generator
+├── app.py                         Streamlit simulation / CSV dashboard
+├── generate_report.py             Project summary and vulnerability report
+├── README.md                      Quick start and user workflow
+├── CAN-Sentinel-Project-Report.md Concise vulnerability assessment
+├── CAN-Sentinel-Technical-Guide.md This walkthrough
+├── CAN-Sentinel-Technical-Guide.pdf PDF version of this guide
 ├── requirements.txt               Runtime dependencies
 ├── requirements-dev.txt           Runtime dependencies plus pytest
-├── README.md                      Installation and project overview
-├── CAN-Sentinel-Project-Report.md Vulnerability summary
-├── CAN-Sentinel-Technical-Guide.md This walkthrough
 ├── can_sentinel/
-│   ├── __init__.py                 Package version
-│   ├── simulator.py                Typed frame model and traffic generation
-│   ├── preprocessor.py             CSV validation and causal features
-│   ├── detector_rules.py            Deterministic rate/ID/DLC checks
-│   ├── detector_ml.py               Isolation Forest + Random Forest
-│   ├── engine.py                    Pipeline, alert fusion, JSONL logging
-│   └── evaluator.py                 Metrics and latency summary
-└── tests/
-    └── test_pipeline.py             Unit/smoke tests
+│   ├── simulator.py                Typed frame and synthetic scenario generator
+│   ├── preprocessor.py             CSV normalization and causal features
+│   ├── detector_rules.py            Rolling-window protocol/rate rules
+│   ├── detector_ml.py               Isolation Forest / Random Forest scoring
+│   ├── engine.py                    Per-frame fusion, timing, JSONL alert output
+│   └── evaluator.py                 Fused classification + ML ROC-AUC metrics
+└── tests/test_pipeline.py           Regression tests
 ```
 
-## 4. Data model and traffic generation
+## 4. Frame format and simulator
 
-`can_sentinel/simulator.py` defines the immutable `CANFrame` record: timestamp, arbitration ID, DLC, payload bytes, label, and scenario name. Construction checks that the ID is in the standard/extended CAN identifier range, the DLC is 0–8 and matches payload size, and timestamps are non-negative.
+`CANFrame` is an immutable record with `timestamp`, `arbitration_id`, `dlc`, `data`, `label`, and `attack`. Construction rejects non-finite/negative timestamps, invalid identifiers, DLC outside integer range 0–8, payload/DLC mismatch, and labels other than 0 (benign) or 1 (attack).
 
-`TrafficSimulator(seed=...)` uses a private seeded pseudorandom generator. Reusing the same seed and method arguments produces the same synthetic sequence. This supports repeatable demonstrations and regression tests; it does not model every timing, signal, or physical property of a vehicle network.
+`TrafficSimulator(seed=7)` uses deterministic pseudorandom generation. Reusing a seed and the same calls reproduces the traffic. The generated data is a simplified teaching sample, not a physical bus timing model.
 
-The supported scenarios are:
+- **Normal:** repeats IDs `0x100`, `0x120`, `0x200`, `0x316`, and `0x400`, with eight-byte payloads. For `0x316`, the first two bytes contain little-endian example RPM values.
+- **DoS:** emits identifier `0x000` with default interval one tenth the normal period (10x generator frame rate). The default rules also flag `0x000` as reserved.
+- **Fuzzy:** random 11-bit identifiers `0x000`–`0x7FF` with random eight-byte payloads.
+- **RPM spoof:** uses ID `0x316` with example RPM payloads in the 7000–9999 range.
 
-- **Normal:** cyclic identifiers (`0x100`, `0x120`, `0x200`, `0x316`, `0x400`) and eight-byte payloads. The example `0x316` engine-speed field uses the first two bytes as little-endian RPM values in a modest range.
-- **DoS:** repeated `0x000` frames. The default interval is one tenth of the normal period, hence ten times the configured baseline frame rate for that generator. The identifier is also configured as reserved in the default rule detector, so this scenario triggers a deterministic rule.
-- **Fuzzy:** random standard identifiers from `0x000` through `0x7FF` and random eight-byte payloads.
-- **Spoof:** frames using engine-speed identifier `0x316` with first two bytes encoding implausible 7000–9999 RPM values.
+`scenario()` combines normal and attack frames, labels them, and sorts chronologically. It does not send frames anywhere.
 
-`scenario()` concatenates the normal sequence and attack sequence, assigning ground-truth label 0 to normal and 1 to injected attack frames, then sorts by timestamp.
+## 5. CSV parsing and feature extraction
 
-## 5. Input validation and feature extraction
+`read_can_csv(path)` requires `Timestamp`, `Arbitration_ID`, `DLC`, and `Data_Bytes`. IDs may be decimal or `0x`-prefixed. Payload hex may contain spaces, colons, commas, underscores, or hyphens. The parser rejects non-finite/negative timestamps, malformed identifiers, fractional or out-of-range DLC, data-length mismatch, invalid labels, and empty logs. If a CSV contains optional `Label`, each value must be 0 or 1. Out-of-order offline rows are stably sorted by timestamp.
 
-`can_sentinel/preprocessor.py` accepts CSV data with required columns `Timestamp`, `Arbitration_ID`, `DLC`, and `Data_Bytes`. It accepts decimal IDs or `0x`-prefixed identifiers. Hex payload text may contain whitespace and common separators. Parsing checks required columns, valid numeric ranges, DLC limits, payload length agreement, and timestamp ordering. Out-of-order rows are stably sorted by timestamp.
+`FeatureExtractor` is stateful and causal: process rows in non-decreasing time order and use a fresh instance per independent trace. It computes:
 
-`FeatureExtractor` is stateful: it processes records in order and only uses current and prior observations. That causal property avoids using future frames when the same extractor is used in an online pipeline. The feature vector is:
-
-| Feature | Meaning |
+| Feature | Definition |
 |---|---|
-| `iat` | Time since the previous observed frame (seconds; first frame is 0) |
-| `id_frequency` | Occurrences of the current arbitration ID in the recent frame window, including this frame |
-| `payload_entropy` | Shannon entropy of payload byte values; 0 for an empty payload |
+| `iat` | Seconds since prior frame; first frame is 0 |
+| `id_frequency` | Count of current ID in recent bounded frame window, including this frame |
+| `payload_entropy` | Shannon entropy of byte values; zero for empty data |
 | `dlc` | Data length code |
 | `identifier` | Numeric arbitration ID |
-| `id_novelty` | 1 if the ID has not appeared earlier in this extractor's session, otherwise 0 |
-| `rpm_raw` | Little-endian first two payload bytes for ID `0x316`; otherwise 0 |
+| `id_novelty` | 1 when ID has not appeared earlier in this extractor session, else 0 |
+| `rpm_raw` | Little-endian first two bytes for ID `0x316`; otherwise zero |
 
-The recent ID frequency uses a bounded window. ID novelty is session-cumulative. These features are illustrative. A real detector normally requires signal definitions, vehicle-specific baselines, data-quality handling, clock analysis, and validated train/test separation.
+These illustrative features do not use signal engineering, vehicle-specific periods, physical plausibility limits, or a validated ECU specification.
 
-## 6. Deterministic rule detector
+## 6. Deterministic rules
 
-`can_sentinel/detector_rules.py` applies interpretable checks. The default configuration has a one-second rolling time window, a total bus rate threshold, a per-ID threshold, and reserved identifier set containing `0x000`.
+`RuleDetector` keeps one-second rolling timestamp windows by default and checks:
 
-- **DLC bounds:** flags values outside 0–8.
-- **Reserved ID:** flags any observed ID in configured reserved IDs.
-- **Bus flood:** flags when observed frames in the time window exceed the aggregate threshold.
-- **Per-ID rate:** flags when the current identifier exceeds its configured rate threshold.
+- **DLC bounds:** DLC outside 0–8 (direct rule use; normal frame objects reject invalid DLC earlier).
+- **Reserved ID:** any frame with ID `0x000` by default.
+- **Bus flood:** more than the configured aggregate frame rate in the window (default 200 frames/second).
+- **Per-ID rate:** more than the configured rate for one identifier (default 80 frames/second).
 
-Thresholds are demonstration defaults. A legitimate vehicle can use an ID that is reserved by this demo, or exceed a demo rate limit. Production rules must be derived from authorized vehicle-specific specifications and benign traces, with careful false-positive analysis.
+The stream contract is non-decreasing timestamps; the detector rejects out-of-order frames rather than corrupting its windows. Expired per-ID queues are removed. Defaults are demonstration values, not a standard vehicle allowlist: a legitimate vehicle could trigger them. Production settings must come from authorized specifications and validated benign captures.
 
-## 7. Statistical / machine-learning detector
+## 7. Machine-learning score
 
-`can_sentinel/detector_ml.py` trains two scikit-learn estimators:
+`MLDetector.fit()` creates one chronologically mixed synthetic training run with normal and injected attack frames, then extracts all features through one stateful extractor. This avoids resetting feature history at each class boundary. The training attack families are DoS, fuzzy, and spoof.
 
-1. **Isolation Forest** learns a representation of generated benign feature vectors and returns an anomaly decision score.
-2. **Random Forest classifier** is trained on generated benign and labeled attack feature vectors (DoS, fuzzy, spoof).
+Two models are used:
 
-The detector combines the supervised class probability and a squashed Isolation Forest score into one demonstration anomaly score. A configurable decision threshold determines whether the pipeline emits an ML anomaly alert. The random seed, tree counts, and training generator are fixed/configurable for repeatability.
+1. **Isolation Forest** is fit on generated benign features and contributes an anomaly-oriented score.
+2. **Random Forest** learns benign versus generated attack examples.
 
-Important interpretation: the Random Forest has seen examples from the same three synthetic attack families it is later intended to identify. This is not a rigorous zero-day evaluation. An Isolation Forest is not a guarantee of detecting unknown attacks. A production-quality assessment needs independent data splits—ideally holding out vehicles, routes, sessions, or attack families—plus calibration, drift analysis, class imbalance handling, and analyst review.
+A monotonic squashing of the Isolation Forest decision value is blended with Random Forest class confidence to produce a bounded score from 0 to 1. This is a **heuristic ranking/risk score, not a calibrated probability**. The model has seen the same synthetic attack families used in demonstrations; the score is not a zero-day guarantee. Thresholds are not validated operating points. Real evaluation requires independently captured, authorized data, held-out vehicles/sessions/attack families, calibration, drift assessment, and analyst review.
 
-## 8. Real-time-compatible pipeline and forensic events
+## 8. Per-frame engine and forensic alerts
 
-`can_sentinel/engine.py` couples rule checks and ML inference. For each input frame it:
+Create one `IDSEngine` for one chronological stream. The engine:
 
-1. validates identifier, DLC, payload size, and timestamp;
-2. obtains deterministic rule alerts;
-3. extracts the current causal feature vector;
-4. computes the ML anomaly score when a fitted model is supplied;
-5. measures processing duration using a monotonic high-resolution timer;
-6. creates alert records and appends them as JSON Lines when any detector fires.
+1. parses and validates typed frame objects or mapping records;
+2. rejects invalid or out-of-order frame timestamps;
+3. evaluates deterministic rules;
+4. computes causal features and optional ML score;
+5. determines an alert if **any rule fires OR** the ML score is at/above threshold;
+6. appends each alert as a JSON Lines record.
 
-Each alert records UTC event time, frame timestamp, arbitration ID, severity, rule name, explanatory detail, ML score, and observed processing duration. JSONL is easy to stream and inspect, but this prototype does not provide cryptographic integrity, tamper-evident storage, log rotation, retention policy, access control, or a trusted vehicle clock. Those are important forensic deployment requirements.
+Each event includes UTC event time, frame timestamp, identifier, severity, `source` (`rule` or `ml`), rule name, description, risk score, and `detection_latency_ms`. That duration measures rule/feature/model decision work before alert construction and disk I/O. It is not end-to-end latency. Python and general-purpose operating systems are not hard-real-time; observed duration varies with hardware, load, and dependencies.
 
-The engine is compatible with per-frame processing, but ordinary Python and a general-purpose OS are not hard-real-time. Inference can take several milliseconds or more depending on system load, model configuration, and installed library versions. The project must not claim a sub-millisecond guarantee. Measure on the target hardware and design bounded queues, overload behavior, and failure handling before any operational use.
+JSONL is line-oriented and easy to inspect. This sample does not add signed logs, tamper evidence, log rotation, retention controls, trusted timestamps, or access-control management. The dashboard makes alerts downloadable, but does not retain its session's alert log after the session ends.
 
-## 9. Evaluation metrics
+## 9. Metrics: what is and is not measured
 
-`can_sentinel/evaluator.py` accepts labeled frames, processes each frame once, and reports:
+`evaluate(frames, fresh_engine)` requires a label on every frame and an unused engine. It processes the trace once.
 
-- **Accuracy:** `(TP + TN) / all frames`.
-- **Precision:** `TP / (TP + FP)`; among alerts, fraction truly malicious.
-- **Recall:** `TP / (TP + FN)`; fraction of malicious frames detected.
-- **F1:** harmonic mean of precision and recall.
-- **False-positive rate:** `FP / (FP + TN)`.
-- **ROC-AUC:** ranking ability across score thresholds; only defined when both labels are present.
-- **Mean and p95 latency:** observed per-frame processing duration in milliseconds on the current host.
-- **Confusion matrix:** true negatives, false positives, false negatives, and true positives.
+**Fused classification metrics** use the actual per-frame IDS decision (any rule alert or ML score meeting the configured threshold):
 
-Metrics are threshold-, data-, and host-dependent. A class-imbalanced dataset can make accuracy misleading. At vehicle scale, event-level metrics, detection delay, per-attack breakdown, false alarms per operating hour, resource usage, and safe-response impact should also be considered. Synthetic demo scores are not product claims.
+- Accuracy = `(TP + TN) / total frames`.
+- Precision = `TP / (TP + FP)`.
+- Recall = `TP / (TP + FN)`.
+- F1 = harmonic mean of precision and recall.
+- False-positive rate = `FP / (FP + TN)`.
+- Confusion matrix contains TN, FP, FN, TP.
 
-## 10. Streamlit dashboard walkthrough
+**ROC-AUC** is calculated from the ML score alone, not the fused rule/ML decision. It is unavailable without an ML model or when the evaluation has only one class. **Mean/p95 latency** report host-dependent detector decision timing before alert logging.
 
-Launch from the repository root:
+Accuracy can hide poor minority-class performance. A production assessment should additionally report event-level detection delay, per-attack results, false alarms per operating hour, resource use, and response safety. Results from generated traffic are demonstration-only.
+
+## 10. Dashboard walkthrough
+
+Install and launch from the repository root:
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate              # Windows PowerShell: .venv\\Scripts\\Activate.ps1
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-In the sidebar, select an attack (`dos`, `fuzzy`, or `spoof`), normal/attack frame counts, and a random seed. Press **Run simulation**. The app creates synthetic data, trains the demonstration model, runs the IDS, evaluates the sequence, and stores results in Streamlit session state.
+Choose **Synthetic scenario** to set an attack type, benign/attack frame count, and seed, or select **Upload CSV log** to inspect an authorized file. Click **Analyze traffic**. The first use of a seed trains the model; Streamlit caches it for that app session. The packet inspector renders bytes as hex. The alert table marks rule versus ML source. With labels, classification KPIs use the fused IDS decision and the ROC curve shows the ML score only. Without labels, the UI intentionally omits accuracy and ROC. Download the alert feed as JSONL if you need a local artifact.
 
-The dashboard presents KPI values, traffic timestamp versus arbitration ID, the most recent packet records, a ROC curve when both labels exist, and the recent deterministic/ML alert records. For a useful live-looking replay, change the seed and rerun; this dashboard performs a bounded batch simulation rather than subscribing to a physical CAN interface.
+This is bounded batch analysis, not a live CAN subscription. Dashboard alert records are not persisted on the server after the app session.
 
-## 11. Reports, tests, and reproducibility
-
-Generate the vulnerability summary in Markdown or PDF:
-
-```bash
-python generate_report.py
-python generate_report.py --pdf
-```
-
-Run test dependencies and checks:
+## 11. Tests and reports
 
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest -q
-python -m compileall -q .
+python -m compileall -q can_sentinel app.py generate_report.py
+python generate_report.py
 ```
 
-The tests cover seeded simulation, frame and CSV input validation, reserved-ID alert creation/JSONL output, and metric calculation. Tests are smoke/unit checks and do not establish security efficacy, timing guarantees, or safety suitability.
+`generate_report.py` writes a concise vulnerability assessment Markdown document. `python generate_report.py --pdf` additionally uses the external `manus-md-to-pdf` converter. The checked-in Technical Guide PDF is this fuller walkthrough. Tests verify basic reproducibility, validation, chronological feature state, parser behavior, fused metrics, alert logging, labels, and ML score determinism; they do not prove security efficacy or safety.
 
-## 12. Vulnerability and deployment considerations
+## 12. Vulnerability assessment and practical next steps
 
-| Concern | Why it matters | Safer next step |
+| Concern | Potential impact | Safer next step |
 |---|---|---|
-| Missing CAN sender authentication | A malicious/compromised node can impersonate IDs | Gateway segmentation and access policy; assess CANsec where supported |
-| Availability / arbitration abuse | Priority traffic may delay critical frames | Validate deadlines and fail-safe behavior; gateway rate controls |
-| Fixed demo thresholds | Legitimate vehicle schedules vary | Use OEM-approved allowlists and representative trace baselines |
-| Synthetic model data | Does not represent real fleet variability | Gather consented, labeled data; perform leakage-safe holdouts |
-| Alert log integrity | Local JSONL can be edited or lost | Protected storage, signed exports, time synchronization, retention controls |
-| No automated response | Alerts do not isolate or remediate a compromised ECU | Keep human/safety governance; any response requires hazard analysis |
-| Runtime variability | Python host timing varies | Profile on target, bound operations, review production implementation |
+| No sender authentication on classical CAN | A node may impersonate an ECU identifier | Assess secure gateways/CANsec where supported; protect trust boundaries and keys |
+| Arbitration/availability abuse | Critical timing can be impaired | Validate ECU deadlines and safe failure behavior; review gateway rate controls |
+| Fixed demo thresholds | Legitimate vehicle traffic may be falsely flagged or attacks missed | Develop allowlists and periods from approved OEM requirements and captures |
+| Synthetic-only model | Scores may not transfer to actual vehicles or unseen attacks | Collect labeled, authorized data and evaluate on independent groups |
+| Local JSONL not integrity-protected | Alerts may be altered, lost, or misattributed | Secure collection, storage, clocks, access, retention, and signed exports |
+| No response automation | Detection does not isolate a node or remediate an attack | Keep human/safety governance; hazard-analyze any future response |
+| Host-side latency variation | No timing guarantee | Profile on target, bound queues/work, and review implementation for intended deployment |
 
 ## 13. Safe-use statement
 
-Use only synthetic examples or vehicle data that you are authorized to inspect. Do not connect the demo to public-road vehicles or transmit crafted CAN frames. Any future interface to a real bus needs explicit authorization, isolated hardware-in-the-loop testing, vehicle safety approval, and a separate security and hazard review. CAN-Sentinel is an educational prototype and is not safety-certified or production-ready.
+Use synthetic examples or vehicle data you are authorized to inspect. Do not connect this demo to public-road vehicles or transmit crafted CAN frames. Any future physical-bus interface would require explicit authorization, isolated hardware-in-the-loop testing, safety approval, and a separate security/hazard review. This code is an educational prototype—not a certified IDS or a production automotive component.

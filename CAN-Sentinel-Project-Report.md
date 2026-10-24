@@ -1,25 +1,31 @@
 # CAN-Sentinel: Automotive ECU Intrusion Detection System
 
 ## Executive summary
-CAN-Sentinel is a research/demo pipeline for inspecting offline CAN 2.0B logs and reproducible synthetic traffic. It combines deterministic protocol/rate rules with Isolation Forest and Random Forest scores, emits JSON Lines forensic alerts, and calculates standard IDS metrics. Synthetic results are not evidence of real-vehicle performance.
+CAN-Sentinel is an educational Python prototype for offline Classical CAN log inspection and deterministic synthetic traffic generation. It validates and normalizes frame data, extracts causal features, applies rolling-window rules and a synthetic-trained Isolation Forest / Random Forest score, creates JSONL alerts, and evaluates labeled traces. It does not connect to a CAN interface or transmit frames; it is not production-ready or safety-certified.
 
 ## Architecture
-`Synthetic traffic / CSV -> validation + causal features -> deterministic rules + ML ensemble -> JSONL forensic alerts -> Streamlit dashboard / evaluator`
+`Synthetic scenario / authorized CSV → validation and chronological normalization → causal per-frame features → deterministic rules + ML risk score → fused frame decision → JSONL alerts → dashboard and evaluator`
 
-## Attack scenarios
-- **DoS:** repeated dominant-priority arbitration ID `0x000`, generated at 10x the configured baseline rate.
-- **Fuzzy:** randomized 11-bit IDs (`0x000`–`0x7FF`) and random eight-byte payloads.
-- **Spoofing:** implausible high engine-speed payloads on `0x316`.
+## Attack demonstrations
+- **DoS:** identifier `0x000` at one tenth the baseline period (10x generator frame rate).
+- **Fuzzy:** randomized standard identifiers `0x000`–`0x7FF` and random eight-byte payloads.
+- **RPM spoof:** implausible example RPM values using ID `0x316`.
+
+All traffic is generated in memory. Nothing transmits on a vehicle network.
 
 ## Vulnerability assessment
-| Finding | Severity | Potential impact | Recommended action |
+| Finding | Severity | Potential impact | Mitigation / next step |
 |---|---|---|---|
-| Classical CAN has no sender authentication | Critical | Compromised nodes can impersonate ECU IDs | Enforce gateway boundaries; evaluate CANsec where supported; protect keys |
-| High-priority bus availability exposure | High | Priority flooding can delay lower-priority frames | Gateway rate limiting, deadline monitoring, segmented networks, fail-safe testing |
-| Static ID/rate assumptions | High | False positives and missed vehicle-specific activity | Create OEM-approved allowlists and timing envelopes from validated traces |
-| Synthetic-only model training | High | Results may not generalize to ECUs or unseen attack families | Collect authorized captures; use vehicle/route/attack-family holdouts |
-| No authenticated provenance for input logs | Medium | Log alteration or misattribution | Secure collection, clocks, access controls, and signed export manifests |
-| Python host-side latency is not deterministic | Medium | Cannot claim hard real-time or sub-millisecond guarantees | Profile target hardware; bound workloads and queues; safety-review deployment |
+| Classical CAN sender identity is not cryptographically authenticated | Critical | A compromised node may impersonate ECU IDs | Use secure gateway controls; evaluate CANsec where supported; protect trust boundaries and keys |
+| Bus availability can be degraded through priority abuse | High | High-priority traffic can delay lower-priority frames | Monitor deadlines, segment networks, evaluate gateway rate controls, validate safe failure behavior |
+| Demonstration thresholds are not vehicle-specific | High | Legitimate frames may be falsely alerted or abnormal behavior missed | Derive policies from approved OEM requirements and representative authorized traces |
+| Synthetic ML training distribution | High | Results may not transfer to real ECUs, vehicles, or unseen attacks | Use independent authorized captures and hold out vehicles/sessions/attack families |
+| Heuristic ML score is not calibrated | High | Threshold metrics can be misinterpreted as deployment probabilities | Calibrate only with held-out representative validation data; report operating points and uncertainty |
+| Local JSONL lacks integrity protection | Medium | Alerts can be altered, lost, or misattributed | Secure collection, storage, clocks, access control, retention, and signed exports |
+| Host-side detector latency is variable | Medium | No hard-real-time or sub-millisecond guarantee | Profile on target hardware and review bounded operation before deployment |
 
-## Metrics and limitations
-The evaluator reports accuracy, precision, recall, F1, false-positive rate, ROC-AUC, mean latency, and p95 latency. Metrics vary by generated seed, threshold, machine, runtime load, and scenario. Example synthetic benchmarks must not be represented as production vehicle validation. This project is a prototype, not a certified automotive security product.
+## Evaluation interpretation
+Accuracy, precision, recall, F1, false-positive rate, and confusion matrix use the fused frame decision (any deterministic rule or ML threshold alert). ROC-AUC ranks the ML score alone and requires labeled examples from both classes. The 0–1 ML score is heuristic—not a calibrated probability. Timing is measured before alert construction and disk I/O. Synthetic sample results do not establish real-vehicle performance.
+
+## Safe-use statement
+Use only generated traffic or data you are authorized to analyze. Do not connect the demo to public-road vehicles or transmit crafted frames. Future hardware integration would require explicit authorization, isolated test benches, safety approval, and separate security and hazard reviews.
