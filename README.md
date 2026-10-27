@@ -2,6 +2,12 @@
 
 **An educational, offline CAN 2.0B intrusion-detection demo.** It creates synthetic vehicle-network frames or inspects an authorized CSV log, applies simple rules plus a synthetic-trained ML score, records alerts, and displays results in a Streamlit dashboard.
 
+[![Try the live app](https://img.shields.io/badge/Try%20the%20app-Live%20demo-FF4B4B?logo=streamlit&logoColor=white)](https://8501-iuh6n4r730hrp6p2yh92r-2a97920f.sg2.manus.computer)
+[![Download project ZIP](https://img.shields.io/badge/Download-Project%20ZIP-2ea44f?logo=github&logoColor=white)](https://github.com/sudanshukushwaha1-del/CAN-Sentinel/archive/refs/heads/development.zip)
+[Browse source on GitHub](https://github.com/sudanshukushwaha1-del/CAN-Sentinel)
+
+> The live demo is a temporary task-cloud preview and may stop when that environment expires. The public GitHub ZIP link is the durable source download while this repository remains public. See [DEPLOYMENT.md](DEPLOYMENT.md) for steps to host a persistent copy.
+
 > **Safety and claims:** This project never connects to or transmits on a physical CAN bus. It is not production automotive security software, is not safety-certified, and has no hard-real-time guarantee. The model is trained on synthetic examples. Its scores are not calibrated vehicle performance or proof of zero-day detection.
 
 ## Quick start
@@ -80,6 +86,7 @@ Use a **fresh `IDSEngine` for each independent trace**; the rolling timing and f
 can_sentinel/                 Core simulator, parser, rules, ML, engine, evaluator, seasonal palette
 app.py                        Streamlit simulation and CSV dashboard
 generate_report.py            Project summary and vulnerability table generator
+DEPLOYMENT.md                 Persistent hosting instructions
 CAN-Sentinel-Project-Report.md Short project/vulnerability summary
 CAN-Sentinel-Technical-Guide.md Detailed walkthrough
 CAN-Sentinel-Technical-Guide.pdf PDF copy of the walkthrough
