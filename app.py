@@ -4,6 +4,7 @@ from dataclasses import asdict
 import io
 import json
 import tempfile
+from datetime import date
 from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -13,11 +14,15 @@ from can_sentinel.detector_ml import MLDetector
 from can_sentinel.engine import IDSEngine
 from can_sentinel.evaluator import evaluate
 from can_sentinel.preprocessor import FeatureExtractor, normalize_frame_table
+from can_sentinel.seasonal_theme import seasonal_background_css, season_for_month
 from can_sentinel.simulator import TrafficSimulator
 
 st.set_page_config(page_title="CAN-Sentinel IDS", page_icon="🛡️", layout="wide")
+current_season = season_for_month(date.today().month)
+st.markdown(seasonal_background_css(current_season), unsafe_allow_html=True)
 st.title("CAN-Sentinel | CAN Bus IDS Demo")
 st.caption("Inspect a reproducible synthetic scenario or an authorized offline CSV capture.")
+st.caption(f"Seasonal background: {current_season.title()} · selected automatically from the calendar.")
 st.warning("Educational prototype only. Scores are trained on synthetic traffic, not calibrated vehicle performance. This app never connects to or transmits on a physical CAN bus.")
 
 @st.cache_resource(show_spinner="Training the reproducible synthetic demo model…")

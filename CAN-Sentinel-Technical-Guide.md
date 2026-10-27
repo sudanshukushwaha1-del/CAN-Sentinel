@@ -47,6 +47,7 @@ CAN-Sentinel/
 │   ├── preprocessor.py             CSV normalization and causal features
 │   ├── detector_rules.py            Rolling-window protocol/rate rules
 │   ├── detector_ml.py               Isolation Forest / Random Forest scoring
+│   ├── seasonal_theme.py            Calendar-based display palette
 │   ├── engine.py                    Per-frame fusion, timing, JSONL alert output
 │   └── evaluator.py                 Fused classification + ML ROC-AUC metrics
 └── tests/test_pipeline.py           Regression tests
@@ -148,7 +149,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Choose **Synthetic scenario** to set an attack type, benign/attack frame count, and seed, or select **Upload CSV log** to inspect an authorized file. Click **Analyze traffic**. The first use of a seed trains the model; Streamlit caches it for that app session. The packet inspector renders bytes as hex. The alert table marks rule versus ML source. With labels, classification KPIs use the fused IDS decision and the ROC curve shows the ML score only. Without labels, the UI intentionally omits accuracy and ROC. Download the alert feed as JSONL if you need a local artifact.
+Choose **Synthetic scenario** to set an attack type, benign/attack frame count, and seed, or select **Upload CSV log** to inspect an authorized file. Click **Analyze traffic**. The first use of a seed trains the model; Streamlit caches it for that app session. The packet inspector renders bytes as hex. The alert table marks rule versus ML source. With labels, classification KPIs use the fused IDS decision and the ROC curve shows the ML score only. Without labels, the UI intentionally omits accuracy and ROC. Download the alert feed as JSONL if you need a local artifact. The subtle background palette is selected by calendar month (Northern Hemisphere temperate seasons) and refreshes when the app reruns; it does not change IDS behavior.
 
 This is bounded batch analysis, not a live CAN subscription. Dashboard alert records are not persisted on the server after the app session.
 

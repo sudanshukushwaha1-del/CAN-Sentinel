@@ -20,6 +20,8 @@ streamlit run app.py
 
 In the dashboard, choose **Synthetic scenario**, select an attack type and frame counts, set a seed, then click **Analyze traffic**. The same seed gives repeatable generated traffic. The first analysis trains a demonstration model; subsequent runs with the same seed reuse it in the dashboard session. The app shows traffic, packet bytes, frame-level alerts, and—when labels are available—classification metrics and an ML ROC curve. Alert events can be downloaded from the dashboard as JSONL.
 
+The dashboard background uses a subtle season palette selected from the calendar month (Northern Hemisphere temperate seasons). It updates automatically the next time the app reruns after a season changes; no daily source-code edits or commits are needed.
+
 ## What the output means
 
 - **Accuracy, precision, recall, F1, and false-positive rate** describe frame-level outcomes from the *fused IDS decision*: an alert from any deterministic rule OR the ML score crossing its configured threshold.
@@ -75,7 +77,7 @@ Use a **fresh `IDSEngine` for each independent trace**; the rolling timing and f
 ## Project layout
 
 ```text
-can_sentinel/                 Core simulator, parser, rules, ML, engine, evaluator
+can_sentinel/                 Core simulator, parser, rules, ML, engine, evaluator, seasonal palette
 app.py                        Streamlit simulation and CSV dashboard
 generate_report.py            Project summary and vulnerability table generator
 CAN-Sentinel-Project-Report.md Short project/vulnerability summary
