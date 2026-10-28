@@ -38,6 +38,7 @@ if source == "Synthetic scenario":
     attack_count = st.sidebar.slider("Injected attack frames", 50, 500, 120, 10)
     uploaded_file = None
 else:
+    st.sidebar.warning("Public hosted demo: CSV contents are sent to this website for analysis. Never upload confidential, personal, or unauthorized vehicle captures; use sanitized authorized data only.")
     st.sidebar.caption("CSV headers: Timestamp, Arbitration_ID, DLC, Data_Bytes; optional Label (0/1).")
     uploaded_file = st.sidebar.file_uploader("Choose an authorized CSV capture", type=["csv"])
     attack_label = "CSV inspection"
@@ -87,7 +88,7 @@ if analysis:
         st.subheader(f"Results · {analysis['scenario']}")
         if metrics is None:
             st.info(f"Inspected {analysis['frame_count']} frames. No ground-truth `Label` column was supplied, so classification metrics and ROC-AUC are intentionally omitted.")
-            st.metric("Frames with one or more alerts", int(analysis["alerts"]["frame_timestamp"].nunique()) if not analysis["alerts"].empty else 0)
+            st.metric("Frames with one or more alerts", int(analysis["alerts"]["frame_index"].nunique()) if not analysis["alerts"].empty else 0)
         else:
             st.caption("Frame-level classification uses fused decisions (any rule alert OR ML threshold). ROC-AUC ranks the ML score only.")
             cols = st.columns(5)

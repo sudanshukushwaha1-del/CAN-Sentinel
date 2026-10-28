@@ -1,27 +1,30 @@
-# Deploy CAN-Sentinel for a persistent public demo
+# Hosting and deployment
 
-## Links in the README
+CAN-Sentinel runs as a Python/Streamlit application in a managed server container. The original Python app, detector package, and user workflow are preserved. Nginx sits in front of Streamlit to expose the required root route manifest, forward ordinary HTTP and Streamlit WebSocket traffic, and serve the unauthenticated readiness endpoint.
 
-The README's **Try the live app** badge points to a task-cloud preview. It is online now, but it is temporary and can stop when the preview environment expires. The **Download project ZIP** button points to GitHub's public archive for the `development` branch; it works for anyone while the repository remains public.
+The project declares a managed container entrypoint in `Dockerfile` and health path `/_stcore/health`. The image installs dependencies from `requirements.txt`, starts Streamlit on its private internal listener, then makes Nginx listen on the platform-provided `PORT` (default 3000). The root endpoint serves the dashboard; `/manus-routes.json` serves the declared route set. The public website is [CAN-Sentinel](https://cansentinel-knbjqxgy.manus.space). Hosting is on demand, so an idle app can cold-start.
 
-## Publish your own persistent Streamlit app
+## Public app and data handling
 
-The repository can be deployed through Streamlit Community Cloud. This creates a cloud app under the account that authorizes the deployment; it is separate from the temporary Manus preview.
+The website is public and has no account/login gate. Synthetic scenarios are the recommended way to try the demo. When a CSV is selected, its contents are uploaded to the hosted application for processing. The interface warns users not to submit confidential, personal, or unauthorized vehicle captures. The app adds no durable capture storage, database, CAN adapter, or transmission path. Container memory and local files are temporary; the alert JSONL is a user download, not persistent server storage.
 
-1. Sign in to Streamlit Community Cloud with the GitHub account that can access `sudanshukushwaha1-del/CAN-Sentinel`.
-2. Create a new app and select the repository `sudanshukushwaha1-del/CAN-Sentinel`.
-3. Choose branch `development` and main file path `app.py`.
-4. Deploy. The app installs Python dependencies from `requirements.txt`; no secret values are required for the demo.
-5. Open the deployed app's settings/sharing controls and select the access mode you want. If you want anyone to try it, make it public, then copy the stable app URL.
-6. Once you have that stable URL, replace the temporary preview URL in the README's **Try the live app** badge with your persistent app URL.
+A permanent website URL does not necessarily mean an always-warm process. Depending on hosting policy, an idle app can sleep and take longer to respond to the next visit. No keep-alive traffic is configured.
 
-## Local alternative
+## Local production-style proxy (Linux)
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y nginx gettext-base
 python -m venv .venv
-source .venv/bin/activate       # Windows PowerShell: .venv\Scripts\Activate.ps1
+source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py
+PORT=3000 bash start.sh
 ```
 
-The Streamlit app only analyzes synthetic or uploaded offline CSV data. It does not connect to a vehicle or transmit CAN frames. Do not upload captures unless you are authorized to share them with the chosen hosting provider; avoid including sensitive data in public demos.
+Open `http://localhost:3000`. `/_stcore/health` returns `ok`; `/manus-routes.json` returns the website route declaration. `start.sh` starts Streamlit on the internal port `8502`, waits for readiness, and runs Nginx on `PORT`. It uses a temporary standalone Nginx config and writable temporary directories, so the local process does not require root after package installation.
+
+For a simpler dashboard-only local run, use `streamlit run app.py`. This skips the proxy and does not expose the root `/manus-routes.json` route.
+
+## Container operation
+
+`Dockerfile` uses Python 3.12 slim, installs Nginx and `gettext-base`, installs the runtime requirements, and copies only the files needed to serve the dashboard and route manifest. The production listener honors the managed `PORT`. Nginx forwards WebSocket upgrades for Streamlit and sets a bounded upload body size; Streamlit's upload limit is 200 MB. The container has no database and does not persist uploaded captures.

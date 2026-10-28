@@ -1,8 +1,8 @@
 # CAN-Sentinel
 ## Technical Guide: How the Automotive ECU Intrusion-Detection Demo Works
 
-**Audience:** Security Admin Associate L1 / Cyber Security internship  
-**Scope:** Offline CAN 2.0B analysis and synthetic attack simulation  
+- **Audience:** Security Admin Associate L1 / Cyber Security internship
+- **Scope:** Offline CAN 2.0B analysis and synthetic attack simulation
 
 > **Safety statement:** This educational prototype does not open a CAN adapter, communicate with a vehicle, or transmit frames. It is not production-ready, safety-certified, or hard-real-time software. Synthetic metrics must not be represented as vehicle performance.
 
@@ -117,7 +117,7 @@ Create one `IDSEngine` for one chronological stream. The engine:
 5. determines an alert if **any rule fires OR** the ML score is at/above threshold;
 6. appends each alert as a JSON Lines record.
 
-Each event includes UTC event time, frame timestamp, identifier, severity, `source` (`rule` or `ml`), rule name, description, risk score, and `detection_latency_ms`. That duration measures rule/feature/model decision work before alert construction and disk I/O. It is not end-to-end latency. Python and general-purpose operating systems are not hard-real-time; observed duration varies with hardware, load, and dependencies.
+Each event includes a 1-based `frame_index` unique within the current trace, UTC event time, frame timestamp, identifier, severity, `source` (`rule` or `ml`), rule name, description, risk score, and `detection_latency_ms`. The index—not timestamp uniqueness—is used to count alerted frames when multiple CAN frames share a timestamp. That duration measures rule/feature/model decision work before alert construction and disk I/O. It is not end-to-end latency. Python and general-purpose operating systems are not hard-real-time; observed duration varies with hardware, load, and dependencies.
 
 JSONL is line-oriented and easy to inspect. This sample does not add signed logs, tamper evidence, log rotation, retention controls, trusted timestamps, or access-control management. The dashboard makes alerts downloadable, but does not retain its session's alert log after the session ends.
 

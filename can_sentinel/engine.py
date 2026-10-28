@@ -14,6 +14,7 @@ from .simulator import CANFrame
 @dataclass(frozen=True)
 class Alert:
     event_time: str
+    frame_index: int
     frame_timestamp: float
     arbitration_id: int
     severity: str
@@ -75,13 +76,14 @@ class IDSEngine:
         self.last_rule_alerts = rule_alerts
         self.last_detected = bool(rule_alerts) or detected_by_ml
         self.processed_frames += 1
+        frame_index = self.processed_frames
         # This is detector processing time before alert construction and disk logging, not end-to-end I/O latency.
         elapsed_ms = (time.perf_counter_ns() - started) / 1_000_000
         now = datetime.now(timezone.utc).isoformat()
-        new_alerts = [Alert(now, normalized.timestamp, normalized.arbitration_id, item.severity,
+        new_alerts = [Alert(now, frame_index, normalized.timestamp, normalized.arbitration_id, item.severity,
                             "rule", item.rule, item.detail, score, elapsed_ms) for item in rule_alerts]
         if detected_by_ml:
-            new_alerts.append(Alert(now, normalized.timestamp, normalized.arbitration_id,
+            new_alerts.append(Alert(now, frame_index, normalized.timestamp, normalized.arbitration_id,
                                     "medium", "ml", "ML_ANOMALY",
                                     f"ensemble anomaly score {score:.3f} meets threshold {self.ml_threshold:.3f}",
                                     score, elapsed_ms))

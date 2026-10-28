@@ -63,6 +63,19 @@ def test_jsonl_rule_alert_is_recorded(tmp_path: Path) -> None:
     assert records[0]["rule"] == "RESERVED_ID"
 
 
+def test_alert_frame_indices_disambiguate_duplicate_timestamps(tmp_path: Path) -> None:
+    log_path = tmp_path / "duplicate-timestamps.jsonl"
+    engine = IDSEngine(log_path=log_path)
+    frame = CANFrame(1.0, 0, 8, b"12345678", 1, "dos")
+    first_alerts, _ = engine.process(frame)
+    second_alerts, _ = engine.process(frame)
+    assert first_alerts and second_alerts
+    assert {alert.frame_index for alert in first_alerts} == {1}
+    assert {alert.frame_index for alert in second_alerts} == {2}
+    records = [json.loads(line) for line in log_path.read_text().splitlines()]
+    assert {record["frame_index"] for record in records} == {1, 2}
+
+
 def test_metrics_measure_fused_rules_without_an_ml_model(tmp_path: Path) -> None:
     frames = TrafficSimulator(2).scenario(20, 10, "dos")
     result = evaluate(frames, IDSEngine(log_path=tmp_path / "events.jsonl"))

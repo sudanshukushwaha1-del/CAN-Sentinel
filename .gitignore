@@ -3,6 +3,5 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
-.env
-*.jsonl
 .streamlit/secrets.toml
+*.jsonl

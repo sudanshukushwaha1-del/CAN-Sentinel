@@ -1,101 +1,62 @@
 # CAN-Sentinel
 
-**An educational, offline CAN 2.0B intrusion-detection demo.** It creates synthetic vehicle-network frames or inspects an authorized CSV log, applies simple rules plus a synthetic-trained ML score, records alerts, and displays results in a Streamlit dashboard.
+**A simulation-only CAN 2.0B intrusion-detection demo.** The dashboard generates reproducible traffic, applies deterministic rules and a synthetic-trained anomaly model, and shows packets, alerts, and evaluation metrics.
 
-[![Try the live app](https://img.shields.io/badge/Try%20the%20app-Live%20demo-FF4B4B?logo=streamlit&logoColor=white)](https://8501-iuh6n4r730hrp6p2yh92r-2a97920f.sg2.manus.computer)
-[![Download project ZIP](https://img.shields.io/badge/Download-Project%20ZIP-2ea44f?logo=github&logoColor=white)](https://github.com/sudanshukushwaha1-del/CAN-Sentinel/archive/refs/heads/development.zip)
-[Browse source on GitHub](https://github.com/sudanshukushwaha1-del/CAN-Sentinel)
+[![Try the live app](https://img.shields.io/badge/Try%20the%20app-Live%20site-FF4B4B?logo=streamlit&logoColor=white)](https://cansentinel-knbjqxgy.manus.space)
+[![Download the source ZIP](https://img.shields.io/badge/Download-source%20ZIP-2ea44f?logo=github&logoColor=white)](https://github.com/sudanshukushwaha1-del/CAN-Sentinel/archive/refs/heads/development.zip)
+[Browse the project on GitHub](https://github.com/sudanshukushwaha1-del/CAN-Sentinel)
 
-> The live demo is a temporary task-cloud preview and may stop when that environment expires. The public GitHub ZIP link is the durable source download while this repository remains public. See [DEPLOYMENT.md](DEPLOYMENT.md) for steps to host a persistent copy.
+## Important safety and data note
 
-> **Safety and claims:** This project never connects to or transmits on a physical CAN bus. It is not production automotive security software, is not safety-certified, and has no hard-real-time guarantee. The model is trained on synthetic examples. Its scores are not calibrated vehicle performance or proof of zero-day detection.
+This is an educational prototype—not a certified automotive IDS. It never connects to a vehicle, reads from a CAN adapter, or transmits CAN frames. Model scores are trained on synthetic traffic and are not calibrated vehicle performance or proof of zero-day detection. Do not use the results for safety decisions.
 
-## Quick start
+The public dashboard can inspect an offline CSV, but uploaded content is sent to the hosted app for analysis. **Never upload confidential, personal, or unauthorized vehicle captures.** Use synthetic examples or sanitized data you are permitted to share.
+
+## Try the dashboard
+
+Choose **Synthetic scenario**, select an attack and seed, then click **Analyze traffic**. Available attacks are DoS flooding led by arbitration ID `0x000`, fuzzy traffic with randomized standard IDs and payloads, and Engine Speed spoofing on ID `0x316`. Results show the traffic timeline, packet inspector, source-aware alert feed, and a downloadable JSONL alert log. Each alert includes a per-trace frame index so frames with identical timestamps remain distinguishable.
+
+For an offline capture, choose **Upload CSV log**. Required columns are `Timestamp`, `Arbitration_ID`, `DLC`, and `Data_Bytes`; optional `Label` values are `0` for benign and `1` for attack. IDs can be decimal or `0x`-prefixed. DLC must be an integer from 0–8 and match the byte count. Chronological ordering is normalized. Without labels, the dashboard omits classification metrics and ROC-AUC.
+
+The subtle background palette follows the calendar season. It changes only the appearance, not detector behavior.
+
+## Run locally
 
 Requirements: Python 3.10 or newer.
 
 ```bash
 python -m venv .venv
-# macOS/Linux
-source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
+source .venv/bin/activate              # Windows PowerShell: .venv\\Scripts\\Activate.ps1
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-In the dashboard, choose **Synthetic scenario**, select an attack type and frame counts, set a seed, then click **Analyze traffic**. The same seed gives repeatable generated traffic. The first analysis trains a demonstration model; subsequent runs with the same seed reuse it in the dashboard session. The app shows traffic, packet bytes, frame-level alerts, and—when labels are available—classification metrics and an ML ROC curve. Alert events can be downloaded from the dashboard as JSONL.
+The local Streamlit run is the simplest way to explore the dashboard. To test the production-style Nginx proxy and required root route manifest, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
-The dashboard background uses a subtle season palette selected from the calendar month (Northern Hemisphere temperate seasons). It updates automatically the next time the app reruns after a season changes; no daily source-code edits or commits are needed.
+## How detection and metrics work
 
-## What the output means
+The preprocessor validates the CAN log fields and extracts causal features such as inter-arrival time, recent ID frequency and payload entropy. The deterministic detector checks protocol and frequency rules. An Isolation Forest/Random Forest ensemble trained reproducibly on generated data produces a heuristic anomaly score. A fused frame is detected if a rule alerts or the ML score crosses its configured threshold.
 
-- **Accuracy, precision, recall, F1, and false-positive rate** describe frame-level outcomes from the *fused IDS decision*: an alert from any deterministic rule OR the ML score crossing its configured threshold.
-- **ROC-AUC** is the ranking performance of the ML score alone. The score is bounded between 0 and 1 but is **not a calibrated probability**. AUC is omitted when there is no ML model or both labels are not present.
-- **Latency** is per-frame detector processing time before alert construction and disk logging. It varies by host and load; it is not a hard-real-time measurement.
-
-Metrics from generated samples are demonstrations only. Synthetic attack patterns are known to the training procedure and are not independent evidence of generalization to real vehicles. Use independent, authorized data and a leakage-safe evaluation protocol for any research claim.
-
-## CSV inspection
-
-Choose **Upload CSV log** in the dashboard for offline inspection of an authorized capture. Required columns are:
-
-```text
-Timestamp,Arbitration_ID,DLC,Data_Bytes
-```
-
-An optional `Label` column must contain `0` for benign and `1` for attack. Timestamps must be finite/non-negative; IDs may be decimal or `0x`-prefixed; DLC must be an integer 0–8 and equal the byte count. Payloads accept hex with whitespace, colon, comma, underscore, or hyphen separators. Out-of-order rows are stably sorted by timestamp. Without labels, the dashboard can show alerts and inspect packets but will not calculate accuracy/precision/recall/F1 or ROC-AUC.
-
-Library use:
-
-```python
-from can_sentinel.preprocessor import read_can_csv
-from can_sentinel.detector_ml import MLDetector
-from can_sentinel.engine import IDSEngine
-from can_sentinel.evaluator import evaluate
-
-rows = read_can_csv("authorized_capture.csv")
-model = MLDetector(seed=7).fit()
-engine = IDSEngine(model, log_path="output/alerts.jsonl")
-if "Label" not in rows.columns:
-    for row in rows.to_dict(orient="records"):
-        alerts, detector_ms = engine.process(row)
-        if alerts:
-            print(alerts)
-else:
-    records = rows.to_dict(orient="records")
-    print(evaluate(records, IDSEngine(model, log_path="output/evaluation-alerts.jsonl")))
-```
-
-Use a **fresh `IDSEngine` for each independent trace**; the rolling timing and frequency features carry state forward and require chronological frames. Evaluation requires a ground-truth label on every frame.
-
-## What is implemented
-
-- **DoS generator:** `0x000` frames at 10x the nominal generator rate.
-- **Fuzzy generator:** randomized standard IDs (`0x000`–`0x7FF`) and randomized eight-byte payloads.
-- **RPM spoof generator:** implausible engine-speed data on `0x316`.
-- **Rules:** reserved-ID observations, aggregate bus rate, per-ID rate, and DLC bounds.
-- **Causal features:** inter-arrival time, recent ID frequency, payload entropy, DLC, ID novelty, and raw RPM field.
-- **ML:** Isolation Forest plus Random Forest ensemble, trained reproducibly on generated benign/attack runs. Output is a heuristic ranking score, not a calibrated probability.
-- **Forensics:** UTC event time, frame time, ID, source (`rule`/`ml`), rule/severity/detail, score, and detector duration in JSONL.
-- **Evaluation:** fused frame-level classification metrics and ML-only ROC-AUC when possible.
+Accuracy, precision, recall, F1, false-positive rate, and detector decision latency describe frame-level results when labels are available. ROC-AUC ranks the ML score only; it is not a probability. Detector latency is host-dependent and excludes JSONL disk I/O, so it is not a real-time guarantee. Synthetic results do not establish performance on actual vehicles.
 
 ## Project layout
 
 ```text
-can_sentinel/                 Core simulator, parser, rules, ML, engine, evaluator, seasonal palette
-app.py                        Streamlit simulation and CSV dashboard
-generate_report.py            Project summary and vulnerability table generator
-DEPLOYMENT.md                 Persistent hosting instructions
-CAN-Sentinel-Project-Report.md Short project/vulnerability summary
-CAN-Sentinel-Technical-Guide.md Detailed walkthrough
+app.py                         Streamlit interface and analysis flow
+can_sentinel/                  Simulator, parser, rules, ML, engine, evaluator, seasonal palette
+Dockerfile                     Managed container image
+start.sh                       Starts Streamlit and Nginx
+nginx/nginx.conf.template      WebSocket proxy and route-manifest endpoint
+public/manus-routes.json       Declares the website page route
+requirements.txt               Runtime dependencies
+requirements-dev.txt           Runtime dependencies plus pytest
+tests/                         Pipeline, dashboard and theme regressions
+DEPLOYMENT.md                  Managed hosting and local proxy details
+CAN-Sentinel-Technical-Guide.md Detailed project walkthrough
 CAN-Sentinel-Technical-Guide.pdf PDF copy of the walkthrough
-tests/                        Regression tests
-requirements.txt              Runtime dependencies
-requirements-dev.txt           Runtime + pytest
 ```
 
-## Tests and reports
+## Tests and report
 
 ```bash
 pip install -r requirements-dev.txt
@@ -104,8 +65,4 @@ python -m compileall -q can_sentinel app.py generate_report.py
 python generate_report.py
 ```
 
-The report generator writes `CAN-Sentinel-Project-Report.md` in the current folder by default. Optional PDF export uses the external `manus-md-to-pdf` converter (`python generate_report.py --pdf`). The checked-in technical guide is the fuller explanation; the generated project report is a concise risk summary.
-
-## Important limitations
-
-Classic CAN does not authenticate the sender merely from its arbitration ID. This demonstration does not implement a vehicle-specific signal database, cryptographic CAN security, gateway enforcement, safety response, secure log signing, or adapter connectivity. Thresholds and generated traffic are illustrative. Do not use the output to make safety decisions or to claim vehicle-level security efficacy.
+The report generator produces the short Markdown vulnerability summary; optional PDF export uses `manus-md-to-pdf` (`python generate_report.py --pdf`). The technical guide explains the architecture and metric caveats in more depth.
