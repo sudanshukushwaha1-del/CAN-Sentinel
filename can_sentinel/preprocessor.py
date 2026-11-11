@@ -71,6 +71,17 @@ def normalize_frame_table(frame: pd.DataFrame) -> pd.DataFrame:
         out["Label"] = labels.astype(int)
     return out.sort_values("Timestamp", kind="stable").reset_index(drop=True)
 
+def export_can_csv(frame: pd.DataFrame) -> str:
+    """Serialize analyzed frames while keeping payload bytes human-readable."""
+    missing = REQUIRED - set(frame.columns)
+    if missing:
+        raise ValueError(f"missing required columns: {', '.join(sorted(missing))}")
+    if frame.empty:
+        raise ValueError("CAN log contains no frames")
+    exported = frame.copy()
+    exported["Data_Bytes"] = exported["Data_Bytes"].map(lambda value: parse_data(value).hex(" ").upper())
+    return exported.to_csv(index=False)
+
 class FeatureExtractor:
     """Stateful causal features for one chronological stream; create anew per trace."""
     FEATURE_NAMES = ["iat", "id_frequency", "payload_entropy", "dlc", "identifier", "id_novelty", "rpm_raw"]

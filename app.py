@@ -13,7 +13,7 @@ from sklearn.metrics import RocCurveDisplay
 from can_sentinel.detector_ml import MLDetector
 from can_sentinel.engine import IDSEngine
 from can_sentinel.evaluator import evaluate
-from can_sentinel.preprocessor import FeatureExtractor, normalize_frame_table
+from can_sentinel.preprocessor import FeatureExtractor, export_can_csv, normalize_frame_table
 from can_sentinel.seasonal_theme import seasonal_background_css, season_for_month
 from can_sentinel.simulator import TrafficSimulator
 
@@ -108,6 +108,8 @@ if analysis:
             if "Data_Bytes" in display.columns:
                 display["Data_Bytes"] = display["Data_Bytes"].map(lambda value: value.hex(" ") if isinstance(value, bytes) else value)
             st.dataframe(display, width="stretch", hide_index=True)
+            st.download_button("Download all analyzed frames (CSV)", export_can_csv(analysis["table"]),
+                               file_name="can_sentinel_frames.csv", mime="text/csv", key="download_frames_csv")
         with right:
             st.subheader("ML ROC curve")
             if analysis["labels"] and len(set(analysis["labels"])) == 2:

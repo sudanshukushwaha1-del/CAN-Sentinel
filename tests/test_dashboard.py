@@ -13,6 +13,7 @@ def test_synthetic_dashboard_run_renders_results() -> None:
     assert not app.error
     assert {metric.label for metric in app.metric} >= {"Accuracy", "Precision", "Recall", "F1", "False-positive rate"}
     assert len(app.dataframe) >= 1
+    assert any(item.label == "Download all analyzed frames (CSV)" for item in app.get("download_button"))
 
 
 def test_csv_mode_warns_before_file_selection() -> None:

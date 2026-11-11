@@ -14,7 +14,7 @@ The public dashboard can inspect an offline CSV, but uploaded content is sent to
 
 ## Try the dashboard
 
-Choose **Synthetic scenario**, select an attack and seed, then click **Analyze traffic**. Available attacks are DoS flooding led by arbitration ID `0x000`, fuzzy traffic with randomized standard IDs and payloads, and Engine Speed spoofing on ID `0x316`. Results show the traffic timeline, packet inspector, source-aware alert feed, and a downloadable JSONL alert log. Each alert includes a per-trace frame index so frames with identical timestamps remain distinguishable.
+Choose **Synthetic scenario**, select an attack and seed, then click **Analyze traffic**. Available attacks are DoS flooding led by arbitration ID `0x000`, fuzzy traffic with randomized standard IDs and payloads, and Engine Speed spoofing on ID `0x316`. Results show the traffic timeline, packet inspector, source-aware alert feed, a downloadable JSONL alert log, and a CSV export of all analyzed frames with payloads encoded as readable hex. Each alert includes a per-trace frame index so frames with identical timestamps remain distinguishable.
 
 For an offline capture, choose **Upload CSV log**. Required columns are `Timestamp`, `Arbitration_ID`, `DLC`, and `Data_Bytes`; optional `Label` values are `0` for benign and `1` for attack. IDs can be decimal or `0x`-prefixed. DLC must be an integer from 0–8 and match the byte count. Chronological ordering is normalized. Without labels, the dashboard omits classification metrics and ROC-AUC.
 

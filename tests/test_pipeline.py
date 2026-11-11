@@ -1,4 +1,5 @@
 from __future__ import annotations
+from io import StringIO
 from pathlib import Path
 import json
 import pandas as pd
@@ -6,7 +7,7 @@ import pytest
 from can_sentinel.detector_ml import MLDetector
 from can_sentinel.engine import IDSEngine
 from can_sentinel.evaluator import evaluate
-from can_sentinel.preprocessor import FeatureExtractor, normalize_frame_table, parse_data
+from can_sentinel.preprocessor import FeatureExtractor, export_can_csv, normalize_frame_table, parse_data
 from can_sentinel.simulator import CANFrame, TrafficSimulator
 
 
@@ -28,6 +29,14 @@ def test_frame_and_csv_validation_rejects_invalid_values() -> None:
 
 def test_shared_payload_parser_accepts_documented_separators() -> None:
     assert parse_data("0x01:02_03-04") == bytes.fromhex("01020304")
+
+
+def test_csv_export_uses_hex_payload_and_preserves_context() -> None:
+    frames = pd.DataFrame([{"Timestamp": 1.0, "Arbitration_ID": 0x316, "DLC": 3,
+                            "Data_Bytes": b"\x01\xaf\x00", "Label": 1, "Attack": "spoof"}])
+    exported = pd.read_csv(StringIO(export_can_csv(frames)))
+    assert exported.at[0, "Data_Bytes"] == "01 AF 00"
+    assert exported.at[0, "Label"] == 1 and exported.at[0, "Attack"] == "spoof"
 
 
 def test_engine_mapping_uses_shared_id_and_payload_parser(tmp_path: Path) -> None:
